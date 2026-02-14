@@ -61,6 +61,8 @@ struct HomeView: View {
                         let newTx = Transaction(category: "General", amount: amt, date: Date(), isCredit: isCredit)
                         store.addTransaction(newTx)
                         inputAmount = ""
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        
                     }
                 }) {
                     Text("Log Transaction").fontWeight(.bold).frame(maxWidth: .infinity).padding()
@@ -259,3 +261,9 @@ struct CategoryDetailView: View {
         .navigationTitle("\(category) History")
     }
 }
+
+#Preview {
+    ContentView()
+        .environment(AppDataStore())
+}
+

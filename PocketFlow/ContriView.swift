@@ -2,12 +2,11 @@ import SwiftUI
 import Charts
 
 struct ContriView: View {
-    // Link to the shared brain
     @Environment(AppDataStore.self) private var store
-    
     @State private var rawSelection: Double? = nil
+    
+    // 1. We only need ONE state for navigation
     @State private var selectedFriend: Friend? = nil
-    @State private var navigateToDetail = false
     
     var body: some View {
         NavigationStack {
@@ -22,23 +21,41 @@ struct ContriView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Contributions")
             
-            // Navigation to Personal Profiles
-            .navigationDestination(for: Friend.self) { friend in
-                // Uses Bindable to allow the detail view to update the store directly
+            // 2. THE ONLY NAVIGATION DESTINATION WE NEED
+            // This works for BOTH the chart taps and the list taps
+            .navigationDestination(item: $selectedFriend) { friend in
                 if let index = store.friends.firstIndex(where: { $0.id == friend.id }) {
-                    FriendDetailView(friend: Bindable(store).friends[index])
-                }
-            }
-            // Logic to navigate when a chart slice is tapped
-            .navigationDestination(isPresented: $navigateToDetail) {
-                if let friend = selectedFriend,
-                   let index = store.friends.firstIndex(where: { $0.id == friend.id }) {
                     FriendDetailView(friend: Bindable(store).friends[index])
                 }
             }
         }
     }
     
+    
+    //Friend List Section
+    private var friendsListSection: some View {
+            VStack(spacing: 0) {
+                ForEach(store.friends) { friend in
+                    // Using a Button instead of NavigationLink prevents the "Double Navigation" crash
+                    Button(action: {
+                        selectedFriend = friend
+                    }) {
+                        HStack {
+                            Text(friend.name).fontWeight(.semibold)
+                            Spacer()
+                            Text("₹\(Int(friend.totalOwed))").fontWeight(.bold)
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                        }
+                        .padding()
+                        .foregroundStyle(.primary)
+                    }
+                    Divider().padding(.leading)
+                }
+            }
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal)
+        }
     // --- UI SECTIONS ---
     
     private var chartSection: some View {
@@ -94,43 +111,24 @@ struct ContriView: View {
         .padding(.horizontal)
     }
     
-    private var friendsListSection: some View {
-        VStack(spacing: 0) {
-            ForEach(store.friends) { friend in
-                NavigationLink(value: friend) {
-                    HStack {
-                        Text(friend.name).fontWeight(.semibold)
-                        Spacer()
-                        Text("₹\(Int(friend.totalOwed))").fontWeight(.bold)
-                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                    }
-                    .padding()
-                    .foregroundStyle(.primary)
-                }
-                Divider().padding(.leading)
-            }
-        }
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .padding(.horizontal)
-    }
+
     
     // --- HELPER LOGIC ---
     
     func handleTap(value: Double) {
-        var accumulated = 0.0
-        for friend in store.friends {
-            let sliceSize = friend.totalOwed
-            let endRange = accumulated + sliceSize
-            if value >= accumulated && value <= endRange {
-                selectedFriend = friend
-                navigateToDetail = true
-                rawSelection = nil
-                return
+            var accumulated = 0.0
+            for friend in store.friends {
+                let sliceSize = friend.totalOwed
+                let endRange = accumulated + sliceSize
+                if value >= accumulated && value <= endRange {
+                    // This triggers the same navigation as the list!
+                    selectedFriend = friend
+                    rawSelection = nil
+                    return
+                }
+                accumulated = endRange
             }
-            accumulated = endRange
         }
-    }
 }
 
 // MARK: - FRIEND DETAIL VIEW
@@ -196,9 +194,16 @@ struct FriendDetailView: View {
     
     func savePayment() {
         guard let amount = Double(paymentAmountString) else { return }
-        friend.history.append(FriendTransaction(date: Date(), amount: amount, type: .payment, note: "Paid Back"))
+        
+        // 1. Create the history record
+        let newTransaction = FriendTransaction(date: Date(), amount: amount, type: .payment, note: "Paid Back")
+        
+        // 2. Update the values
+        friend.history.append(newTransaction)
         friend.totalOwed -= amount
-        showPaymentSheet = false
+        
+        // 3. UI SYNC: This forces the UI to refresh immediately
         paymentAmountString = ""
+        showPaymentSheet = false
     }
 }
