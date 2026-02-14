@@ -1,298 +1,261 @@
 import SwiftUI
+import Charts
 
+// MARK: - CONTENT VIEW (Main Tab Controller)
 struct ContentView: View {
     @State private var selectedTab = 0
     
     var body: some View {
         TabView(selection: $selectedTab) {
             HomeView()
-                .tabItem {
-                    Label("Home", systemImage: "house.fill")
-                }
+                .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(0)
             
             HistoryView()
-                .tabItem {
-                    Label("History", systemImage: "clock.arrow.circlepath")
-                }
+                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
                 .tag(1)
             
             DashboardView()
-                .tabItem {
-                    Label("Contri", systemImage: "person.2.fill")
-                }
+                .tabItem { Label("Dashboard", systemImage: "chart.pie.fill") }
                 .tag(2)
         }
         .accentColor(.blue)
     }
 }
 
-// MARK: - Placeholder Views
+// MARK: - 1. HOME VIEW
 struct HomeView: View {
-    @State private var balance: Double = 2350.0
+    @Environment(AppDataStore.self) private var store
     @State private var inputAmount: String = ""
-    @State private var isCredit: Bool = false // false = Spend (Default)
+    @State private var isCredit: Bool = false
     
     var body: some View {
         NavigationStack {
             VStack(spacing: 30) {
-                // 1. The Balance Pill (Retained from previous plan)
+                // Balance Header
                 VStack {
                     Text("Available Balance")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text("₹ \(Int(balance))")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    Text("₹ \(Int(store.totalBalance))")
                         .font(.system(size: 44, weight: .bold, design: .rounded))
+                        .contentTransition(.numericText())
                 }
-                .padding(.vertical, 25)
-                .frame(maxWidth: .infinity)
-                .background(Color.blue.opacity(0.1))
-                .clipShape(Capsule())
-                .padding(.horizontal)
+                .padding(.vertical, 25).frame(maxWidth: .infinity)
+                .background(Color.blue.opacity(0.1)).clipShape(Capsule()).padding(.horizontal)
 
-                // 2. Your Drawing: Input Box + S/C Toggle
+                // Input Box
                 HStack(spacing: 15) {
-                    // Custom Amount Textbox
-                    TextField("0", text: $inputAmount)
-                        .keyboardType(.decimalPad)
-                        .font(.system(size: 24, weight: .semibold, design: .rounded))
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .clipShape(RoundedRectangle(cornerRadius: 15))
+                    TextField("0", text: $inputAmount).keyboardType(.decimalPad)
+                        .font(.system(size: 24, weight: .semibold)).padding()
+                        .background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 15))
                     
-                    // The S | C Toggle (Segmented Picker style)
-                    Picker("Transaction Type", selection: $isCredit) {
+                    Picker("Type", selection: $isCredit) {
                         Text("Spend").tag(false)
                         Text("Credit").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 100)
-                    .scaleEffect(1.2) // Making it easier to tap
-                }
-                .padding(.horizontal)
+                    }.pickerStyle(.segmented).frame(width: 120)
+                }.padding(.horizontal)
 
-                // 3. The "Save" Button (Crucial for Haste mode)
+                // Log Button
                 Button(action: {
-                    // We will add the SwiftData logic here in the next phase
-                    inputAmount = ""
+                    if let amt = Double(inputAmount) {
+                        let newTx = Transaction(category: "General", amount: amt, date: Date(), isCredit: isCredit)
+                        store.addTransaction(newTx)
+                        inputAmount = ""
+                    }
                 }) {
-                    Text("Log Transaction")
-                        .fontWeight(.bold)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(isCredit ? Color.green : Color.red)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 15))
-                }
-                .padding(.horizontal)
-                .disabled(inputAmount.isEmpty) // Prevent empty logs
-
+                    Text("Log Transaction").fontWeight(.bold).frame(maxWidth: .infinity).padding()
+                        .background(isCredit ? Color.green : Color.red).foregroundStyle(.white).clipShape(RoundedRectangle(cornerRadius: 15))
+                }.padding(.horizontal).disabled(inputAmount.isEmpty)
+                
                 Spacer()
             }
-            .navigationTitle("SwiftBalance")
-            .padding(.top)
+            .navigationTitle("PocketFlow").padding(.top)
         }
     }
 }
 
-import SwiftUI
-
+// MARK: - 2. HISTORY VIEW
 struct HistoryView: View {
-    // 1. Using real Date objects now to test the logic
-    @State private var mockHistory = [
-        (amount: 50.0, date: Date(), detail: "", isCredit: false), // Today
-        (amount: 1000.0, date: Calendar.current.date(byAdding: .day, value: -1, to: Date())!, detail: "Pocket Money", isCredit: true), // Yesterday
-        (amount: 120.0, date: Calendar.current.date(byAdding: .day, value: -2, to: Date())!, detail: "Lunch", isCredit: false) // 2 Days ago
-    ]
+    @Environment(AppDataStore.self) private var store
     
     var body: some View {
         NavigationStack {
             List {
-                ForEach(mockHistory.indices, id: \.self) { index in
+                ForEach(store.transactions.sorted(by: { $0.date > $1.date })) { tx in
                     HStack {
-                        // Icon
-                        Image(systemName: mockHistory[index].isCredit ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
-                            .foregroundStyle(mockHistory[index].isCredit ? .green : .red)
-                            .font(.title2)
+                        Image(systemName: tx.isCredit ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                            .foregroundStyle(tx.isCredit ? .green : .red).font(.title2)
                         
                         VStack(alignment: .leading, spacing: 4) {
-                            // Amount
-                            Text("₹ \(Int(mockHistory[index].amount))")
-                                .font(.headline)
-                                .fontWeight(.bold)
-                            
-                            // Haste-Log Logic
-                            if mockHistory[index].detail.isEmpty {
-                                Text("Tap to add details...")
-                                    .font(.caption)
-                                    .italic()
-                                    .foregroundStyle(.orange)
-                            } else {
-                                Text(mockHistory[index].detail)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
+                            Text("₹ \(Int(tx.amount))").font(.headline).fontWeight(.bold)
+                            Text(tx.category).font(.subheadline).foregroundStyle(.secondary)
                         }
-                        
                         Spacer()
-                        
-                        // 2. The Smart Date + Time Display
-                        Text(formatDate(mockHistory[index].date))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.trailing)
+                        Text(tx.date.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    .padding(.vertical, 6)
                 }
             }
-            .navigationTitle("History")
-            .listStyle(.insetGrouped) // Cleaner iOS look
-        }
-    }
-    
-    // 3. The Logic Helper
-    // This respects the user's 12h/24h setting automatically!
-    func formatDate(_ date: Date) -> String {
-        let calendar = Calendar.current
-        
-        // Formatter for the TIME part (respects user settings)
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateStyle = .none
-        timeFormatter.timeStyle = .short // "10:30 PM" or "22:30" based on settings
-        let timeString = timeFormatter.string(from: date)
-        
-        if calendar.isDateInToday(date) {
-            return "Today, \(timeString)"
-        } else if calendar.isDateInYesterday(date) {
-            return "Yesterday, \(timeString)"
-        } else {
-            // For older dates: "Tue, 10:30 PM"
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "E" // Short day name (Mon, Tue)
-            let dayString = dateFormatter.string(from: date)
-            return "\(dayString), \(timeString)"
+            .navigationTitle("History").listStyle(.insetGrouped)
         }
     }
 }
 
-#Preview {
-    HistoryView()
-}
-
-
-import SwiftUI
-import Charts
-
+// MARK: - 3. DASHBOARD VIEW
 struct DashboardView: View {
-    // 1. Mock Data for Charts
-    let spendingData = [
-        (category: "Food", amount: 1200, color: Color.orange),
-        (category: "Travel", amount: 450, color: Color.blue),
-        (category: "Entmt", amount: 300, color: Color.purple)
-    ]
+    @Environment(AppDataStore.self) private var store
+    @State private var timeRange = "7 Days"
+    let timeRanges = ["1 Day", "7 Days", "30 Days", "12 Months"]
     
-    // 2. Mock Data for "Wall of Debt" (Contri)
-    @State private var peopleWhoOweMe = [
-        (name: "Aditya", amount: 300),
-        (name: "Rahul", amount: 150),
-        (name: "Sneha", amount: 50)
-    ]
-    
+    @State private var selectedCategoryForNav: String? = nil
+    @State private var showContriDetail = false
+    @State private var rawSelection: Double? = nil
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 25) {
-                    
-                    // SECTION 1: SOCIAL LEDGER (Priority)
-                    VStack(alignment: .leading, spacing: 15) {
-                        HStack {
-                            Text("Who Owes You")
-                                .font(.headline)
-                            Spacer()
-                            NavigationLink(destination: ContriDetailView()) {
-                                Text("See All")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                            }
-                        }
-                        .padding(.horizontal)
-                        
-                        // Horizontal Scroll of Debtors (Bento Style)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 15) {
-                                // The "Add New" Card
-                                Button(action: {}) {
-                                    VStack {
-                                        Image(systemName: "plus")
-                                            .font(.title)
-                                            .foregroundStyle(.white)
-                                    }
-                                    .frame(width: 60, height: 80)
-                                    .background(Color.blue.opacity(0.8))
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                }
-                                
-                                // The People Cards
-                                ForEach(peopleWhoOweMe, id: \.name) { person in
-                                    VStack(alignment: .leading) {
-                                        Text(person.name)
-                                            .font(.caption)
-                                            .fontWeight(.bold)
-                                            .foregroundStyle(.white)
-                                        Spacer()
-                                        Text("₹\(person.amount)")
-                                            .font(.headline)
-                                            .foregroundStyle(.white)
-                                    }
-                                    .padding(12)
-                                    .frame(width: 100, height: 80, alignment: .leading)
-                                    .background(Color.black.opacity(0.8)) // Sleek dark cards
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                }
-                            }
-                            .padding(.horizontal)
-                        }
-                    }
-                    
-                    // SECTION 2: SPENDING CHARTS (Visuals)
-                    VStack(alignment: .leading) {
-                        Text("Where your money went")
-                            .font(.headline)
-                            .padding(.horizontal)
-                        
-                        Chart(spendingData, id: \.category) { item in
-                            BarMark(
-                                x: .value("Category", item.category),
-                                y: .value("Amount", item.amount)
-                            )
-                            .foregroundStyle(item.color)
-                            .cornerRadius(5)
-                        }
-                        .frame(height: 200)
-                        .padding()
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .shadow(color: .black.opacity(0.05), radius: 5)
-                        .padding(.horizontal)
-                    }
-                    
-                    Spacer()
+                    chartCardSection
+                    recentActivitySection
                 }
                 .padding(.top)
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Dashboard")
+            .navigationDestination(isPresented: $showContriDetail) { ContriView() }
+            .navigationDestination(item: $selectedCategoryForNav) { category in
+                CategoryDetailView(category: category, transactions: filteredTransactions)
+            }
         }
     }
-}
+    
+    // BREAKING UP THE VIEW TO HELP THE COMPILER
+    private var chartCardSection: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            HStack {
+                Text("Financial Breakdown").font(.headline)
+                Spacer()
+                Picker("Range", selection: $timeRange) {
+                    ForEach(timeRanges, id: \.self) { Text($0) }
+                }.pickerStyle(.menu)
+            }.padding(.horizontal)
+            
+            VStack(spacing: 20) {
+                ZStack {
+                    Chart(chartData, id: \.category) { item in
+                        SectorMark(
+                            angle: .value("Amount", item.amount),
+                            innerRadius: .ratio(0.65),
+                            angularInset: 2
+                        )
+                        .cornerRadius(5)
+                        .foregroundStyle(item.color)
+                    }
+                    .frame(height: 280)
+                    .chartAngleSelection(value: $rawSelection)
+                    .onChange(of: rawSelection) { _, newValue in
+                        if let newValue { handleTap(value: newValue) }
+                    }
+                    
+                    VStack(spacing: 2) {
+                        Text("Most Spent").font(.caption).foregroundStyle(.secondary)
+                        Text("₹ \(Int(maxExpenseAmount))").font(.largeTitle).fontWeight(.bold)
+                    }
+                    .frame(width: 140, height: 140)
+                    .background(Color.white.opacity(0.001))
+                    .onTapGesture { }
+                }
+                
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 10) {
+                    ForEach(chartData, id: \.category) { item in
+                        HStack(spacing: 4) {
+                            Circle().fill(item.color).frame(width: 8, height: 8)
+                            Text(item.category).font(.caption).bold()
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 20).background(Color.white).clipShape(RoundedRectangle(cornerRadius: 16))
+            .shadow(color: .black.opacity(0.05), radius: 5).padding(.horizontal)
+        }
+    }
+    
+    private var recentActivitySection: some View {
+        VStack(alignment: .leading) {
+            Text("Recent Activity").font(.headline).padding(.horizontal)
+            ForEach(filteredTransactions.prefix(15)) { tx in
+                HStack {
+                    Circle().fill(tx.color.opacity(0.2)).frame(width: 40, height: 40)
+                        .overlay(Image(systemName: "cart.fill").font(.caption).foregroundStyle(tx.color))
+                    VStack(alignment: .leading) {
+                        Text(tx.category).font(.subheadline).bold()
+                        Text(tx.date.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text("- ₹\(Int(tx.amount))").font(.subheadline).bold()
+                }
+                .padding().background(Color.white).clipShape(RoundedRectangle(cornerRadius: 12)).padding(.horizontal)
+            }
+        }
+    }
 
-// Keep the Detail View for when they click "See All"
-struct ContriDetailView: View {
-    var body: some View {
-        Text("Full Contact List Goes Here")
+    // LOGIC
+    var filteredTransactions: [Transaction] {
+        let cutoffDate: Date
+        switch timeRange {
+            case "1 Day": cutoffDate = Calendar.current.startOfDay(for: Date())
+            case "7 Days": cutoffDate = Calendar.current.date(byAdding: .day, value: -7, to: Date())!
+            case "30 Days": cutoffDate = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+            case "12 Months": cutoffDate = Calendar.current.date(byAdding: .year, value: -1, to: Date())!
+            default: cutoffDate = Date.distantPast
+        }
+        return store.transactions.filter { $0.date >= cutoffDate && !$0.isCredit }.sorted { $0.date > $1.date }
+    }
+
+    var chartData: [(category: String, amount: Double, color: Color)] {
+        var data: [(category: String, amount: Double, color: Color)] = []
+        let grouped = Dictionary(grouping: filteredTransactions, by: { $0.category })
+        for (key, txs) in grouped {
+            data.append((category: key, amount: txs.reduce(0) { $0 + $1.amount }, color: txs.first?.color ?? .gray))
+        }
+        data.append((category: "Contri", amount: store.totalContriAmount, color: .pink))
+        return data.sorted { $0.amount > $1.amount }
+    }
+    
+    var maxExpenseAmount: Double { chartData.first?.amount ?? 0 }
+    
+    func handleTap(value: Double) {
+        var accumulated = 0.0
+        for item in chartData {
+            if value >= accumulated && value <= (accumulated + item.amount) {
+                if item.category == "Contri" { showContriDetail = true }
+                else { selectedCategoryForNav = item.category }
+                break
+            }
+            accumulated += item.amount
+        }
+        rawSelection = nil
     }
 }
 
-#Preview {
-    ContentView()
+// MARK: - 4. CATEGORY DETAIL VIEW
+struct CategoryDetailView: View {
+    let category: String
+    let transactions: [Transaction]
+    
+    var body: some View {
+        List {
+            ForEach(transactions.filter { $0.category == category }) { tx in
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text(tx.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+                        Text(tx.category).font(.headline)
+                    }
+                    Spacer()
+                    Text("₹\(Int(tx.amount))").bold().foregroundStyle(Color.red)
+                }
+            }
+        }
+        .navigationTitle("\(category) History")
+    }
 }
