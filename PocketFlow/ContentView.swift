@@ -1,23 +1,26 @@
+
+
 import SwiftUI
 import Charts
 
-// MARK: - CONTENT VIEW (Main Tab Controller)
+struct SplitPerson: Identifiable {
+    let id = UUID()
+    var name: String = ""
+    var amount: Double = 0.0
+    var isLocked: Bool = false
+}
+
 struct ContentView: View {
     @State private var selectedTab = 0
     
     var body: some View {
         TabView(selection: $selectedTab) {
             HomeView()
-                .tabItem { Label("Home", systemImage: "house.fill") }
-                .tag(0)
-            
+                .tabItem { Label("Home", systemImage: "house.fill") }.tag(0)
             HistoryView()
-                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
-                .tag(1)
-            
+                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }.tag(1)
             DashboardView()
-                .tabItem { Label("Dashboard", systemImage: "chart.pie.fill") }
-                .tag(2)
+                .tabItem { Label("Dashboard", systemImage: "chart.pie.fill") }.tag(2)
         }
         .accentColor(.blue)
     }
@@ -26,52 +29,272 @@ struct ContentView: View {
 // MARK: - 1. HOME VIEW
 struct HomeView: View {
     @Environment(AppDataStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
+    
     @State private var inputAmount: String = ""
     @State private var isCredit: Bool = false
+    
+    @State private var isExpanded: Bool = false
+    @State private var activeTxID: UUID? = nil
+    @State private var category: String = "Select Category"
+    @State private var note: String = ""
+    @State private var showCategoryWarning: Bool = false
+    
+    @State private var isContriMode: Bool = false
+    @State private var splits: [SplitPerson] = []
+    
+    // UI FIX: Tells the keyboard where to jump
+    @FocusState private var focusedSplitID: UUID?
+    
+    @State private var backgroundDate: Date? = nil
+    let categories = ["Food", "Travel", "Entmt", "Groceries", "Misc", "Other"]
     
     var body: some View {
         NavigationStack {
             VStack(spacing: 30) {
-                // Balance Header
-                VStack {
-                    Text("Available Balance")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                    Text("₹ \(Int(store.totalBalance))")
-                        .font(.system(size: 44, weight: .bold, design: .rounded))
-                        .contentTransition(.numericText())
-                }
-                .padding(.vertical, 25).frame(maxWidth: .infinity)
-                .background(Color.blue.opacity(0.1)).clipShape(Capsule()).padding(.horizontal)
-
-                // Input Box
-                HStack(spacing: 15) {
-                    TextField("0", text: $inputAmount).keyboardType(.decimalPad)
-                        .font(.system(size: 24, weight: .semibold)).padding()
-                        .background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 15))
-                    
-                    Picker("Type", selection: $isCredit) {
-                        Text("Spend").tag(false)
-                        Text("Credit").tag(true)
-                    }.pickerStyle(.segmented).frame(width: 120)
-                }.padding(.horizontal)
-
-                // Log Button
-                Button(action: {
-                    if let amt = Double(inputAmount) {
-                        let newTx = Transaction(category: "General", amount: amt, date: Date(), isCredit: isCredit)
-                        store.addTransaction(newTx)
-                        inputAmount = ""
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                        
+                if !isExpanded {
+                    VStack {
+                        Text("Available Balance").font(.subheadline).foregroundStyle(.secondary)
+                        Text("₹ \(Int(store.totalBalance))")
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                            .foregroundStyle(store.totalBalance < 0 ? .red : .primary)
+                            .contentTransition(.numericText())
                     }
-                }) {
-                    Text("Log Transaction").fontWeight(.bold).frame(maxWidth: .infinity).padding()
-                        .background(isCredit ? Color.green : Color.red).foregroundStyle(.white).clipShape(RoundedRectangle(cornerRadius: 15))
-                }.padding(.horizontal).disabled(inputAmount.isEmpty)
+                    .padding(.vertical, 25).frame(maxWidth: .infinity)
+                    .background(Color.blue.opacity(0.1)).clipShape(Capsule()).padding(.horizontal)
+                    .transition(.opacity.combined(with: .scale))
+                }
+
+                if isExpanded {
+                    Button(action: cancelAndEditAmount) {
+                        Text("₹ \(inputAmount)")
+                            .font(.system(size: 36, weight: .bold, design: .rounded))
+                            .padding(.horizontal, 30)
+                            .padding(.vertical, 12)
+                            .background(Color(.systemGray6))
+                            .clipShape(Capsule())
+                            .foregroundStyle(isCredit ? .green : .red)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .transition(.scale.combined(with: .opacity))
+                    
+                } else {
+                    HStack(spacing: 15) {
+                        TextField("0", text: $inputAmount).keyboardType(.decimalPad)
+                            .font(.system(size: 24, weight: .semibold)).padding()
+                            .background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 15))
+                        
+                        Picker("Type", selection: $isCredit) {
+                            Text("Spend").tag(false)
+                            Text("Credit").tag(true)
+                        }.pickerStyle(.segmented).frame(width: 120)
+                    }
+                    .padding(.horizontal)
+                    .transition(.opacity)
+                }
+
+                if !isExpanded {
+                    Button(action: startLogging) {
+                        Text("Log Transaction").fontWeight(.bold).frame(maxWidth: .infinity).padding()
+                            .background(isCredit ? Color.green : Color.red).foregroundStyle(.white).clipShape(RoundedRectangle(cornerRadius: 15))
+                    }.padding(.horizontal).disabled(inputAmount.isEmpty)
+                } else {
+                    expandedDetailsMenu
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 
                 Spacer()
             }
             .navigationTitle("PocketFlow").padding(.top)
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isExpanded)
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isContriMode)
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .background {
+                    backgroundDate = Date()
+                } else if newPhase == .active {
+                    if let bgDate = backgroundDate, Date().timeIntervalSince(bgDate) > 10 {
+                        if isExpanded { forceReset() }
+                    }
+                    backgroundDate = nil
+                }
+            }
+            .onTapGesture {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+        }
+    }
+    
+    var expandedDetailsMenu: some View {
+        VStack(spacing: 15) {
+            HStack {
+                if !isCredit {
+                    if !isContriMode {
+                        Menu {
+                            ForEach(categories, id: \.self) { cat in
+                                Button(cat) {
+                                    category = cat
+                                    showCategoryWarning = false
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: category == "Select Category" ? "tag.fill" : "checkmark.circle.fill")
+                                Text(category == "Select Category" ? "Category" : category).lineLimit(1)
+                            }
+                            .font(.subheadline.bold())
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .background(showCategoryWarning ? Color.red.opacity(0.15) : Color.blue.opacity(0.1))
+                            .foregroundStyle(showCategoryWarning ? Color.red : Color.blue)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(showCategoryWarning ? Color.red : Color.clear, lineWidth: 1.5))
+                        }
+                    } else {
+                        Text("Contri").font(.subheadline.bold()).padding(.horizontal, 16).padding(.vertical, 14)
+                            .background(Color.pink.opacity(0.1)).foregroundStyle(.pink).clipShape(Capsule())
+                    }
+                }
+                
+                TextField("Description...", text: $note)
+                    .padding().background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 15))
+            }.padding(.horizontal)
+            
+            if !isCredit {
+                Toggle("Split as Contri", isOn: $isContriMode)
+                    .padding(.horizontal).padding(.vertical, 8)
+                    .onChange(of: isContriMode) { _, isOn in
+                        if isOn {
+                            category = "Contri"
+                            let halfAmount = (Double(inputAmount) ?? 0) / 2
+                            splits = [SplitPerson(amount: halfAmount)]
+                            showCategoryWarning = false
+                        } else {
+                            category = "Select Category"
+                            splits = []
+                        }
+                    }
+                
+                if isContriMode {
+                    VStack(spacing: 10) {
+                        ForEach($splits) { $split in
+                            HStack {
+                                TextField("Person Name", text: $split.name)
+                                    // UI FIX: Link the focus state
+                                    .focused($focusedSplitID, equals: split.id)
+                                    .onSubmit { addNewSplitRow() }
+                                    .submitLabel(.next)
+                                    .padding().background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 10))
+                                
+                                TextField("Amount", value: $split.amount, format: .number)
+                                    .keyboardType(.decimalPad)
+                                    .onChange(of: split.amount) { _, _ in
+                                        split.isLocked = true
+                                        recalculateSplits()
+                                    }
+                                    .padding().frame(width: 100).background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                        }
+                    }.padding(.horizontal)
+                }
+            }
+            
+            Button(action: finalizeAndReset) {
+                Text("Done").fontWeight(.bold).frame(maxWidth: .infinity).padding()
+                    .background(Color.blue).foregroundStyle(.white).clipShape(RoundedRectangle(cornerRadius: 15))
+            }.padding()
+        }
+    }
+    
+    func startLogging() {
+        guard let amt = Double(inputAmount) else { return }
+        if isCredit {
+            note = "Pocket Money"
+            category = "Income"
+        }
+        let newTx = Transaction(category: isCredit ? "Income" : "Select Category", amount: amt, date: Date(), isCredit: isCredit)
+        store.addTransaction(newTx)
+        activeTxID = newTx.id
+        isExpanded = true
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
+    func cancelAndEditAmount() {
+        if let id = activeTxID { store.transactions.removeAll { $0.id == id } }
+        withAnimation {
+            isExpanded = false
+            activeTxID = nil
+            if isCredit { note = "" }
+        }
+    }
+    
+    func addNewSplitRow() {
+        let newSplit = SplitPerson(amount: 0)
+        splits.append(newSplit)
+        recalculateSplits()
+        
+        // UI FIX: Instantly jumps keyboard to the new row
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            focusedSplitID = newSplit.id
+        }
+    }
+    
+    func recalculateSplits() {
+        let total = Double(inputAmount) ?? 0
+        let lockedSum = splits.filter { $0.isLocked }.reduce(0) { $0 + $1.amount }
+        let unlockedCount = splits.filter { !$0.isLocked }.count
+        
+        if unlockedCount > 0 {
+            let remaining = max(total - lockedSum, 0)
+            let autoSplitAmount = remaining / Double(unlockedCount + 1)
+            for i in 0..<splits.count {
+                if !splits[i].isLocked { splits[i].amount = autoSplitAmount }
+            }
+        }
+    }
+    
+    func finalizeAndReset() {
+        if !isCredit && !isContriMode && category == "Select Category" {
+            withAnimation { showCategoryWarning = true }
+            return
+        }
+        
+        if let id = activeTxID {
+            store.updateTransaction(id: id, category: category, note: note)
+            if !isCredit && isContriMode {
+                let txNote = note.isEmpty ? "Split Expense" : note
+                for split in splits {
+                    store.addFriendDebt(name: split.name, amount: split.amount, date: Date(), note: txNote)
+                }
+            }
+        }
+        
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        withAnimation { isExpanded = false }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            inputAmount = ""
+            note = ""
+            isContriMode = false
+            activeTxID = nil
+            splits = []
+            category = "Select Category"
+            showCategoryWarning = false
+            isCredit = false
+        }
+    }
+    
+    func forceReset() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        withAnimation { isExpanded = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            inputAmount = ""
+            note = ""
+            isContriMode = false
+            activeTxID = nil
+            splits = []
+            category = "Select Category"
+            showCategoryWarning = false
+            isCredit = false
         }
     }
 }
@@ -79,6 +302,19 @@ struct HomeView: View {
 // MARK: - 2. HISTORY VIEW
 struct HistoryView: View {
     @Environment(AppDataStore.self) private var store
+    @State private var editingTx: Transaction? = nil
+    
+    @State private var editCategory: String = "Select Category"
+    @State private var editNote: String = ""
+    @State private var showCategoryWarning: Bool = false
+    
+    @State private var isContriMode: Bool = false
+    @State private var splits: [SplitPerson] = []
+    
+    // UI FIX: Tells the keyboard where to jump
+    @FocusState private var focusedSplitID: UUID?
+    
+    let categories = ["Food", "Travel", "Entmt", "Groceries", "Misc", "Other"]
     
     var body: some View {
         NavigationStack {
@@ -90,15 +326,154 @@ struct HistoryView: View {
                         
                         VStack(alignment: .leading, spacing: 4) {
                             Text("₹ \(Int(tx.amount))").font(.headline).fontWeight(.bold)
-                            Text(tx.category).font(.subheadline).foregroundStyle(.secondary)
+                            HStack {
+                                Text(tx.category).font(.subheadline).foregroundStyle(.secondary)
+                                if tx.isDescriptionPending {
+                                    Text("• Pending").font(.caption).bold().foregroundStyle(.orange)
+                                } else {
+                                    Text("• \(tx.note)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
                         }
                         Spacer()
                         Text(tx.date.formatted(date: .abbreviated, time: .shortened))
                             .font(.caption).foregroundStyle(.secondary)
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        editCategory = tx.category
+                        editNote = tx.note
+                        isContriMode = false
+                        splits = []
+                        showCategoryWarning = false
+                        editingTx = tx
+                    }
                 }
             }
             .navigationTitle("History").listStyle(.insetGrouped)
+            .sheet(item: $editingTx) { tx in
+                VStack(spacing: 20) {
+                    Text(tx.isCredit ? "Edit Income" : "Edit Expense").font(.headline).padding(.top, 10)
+                    
+                    HStack {
+                        if !tx.isCredit {
+                            if !isContriMode {
+                                Menu {
+                                    ForEach(categories, id: \.self) { cat in
+                                        Button(cat) {
+                                            editCategory = cat
+                                            showCategoryWarning = false
+                                        }
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: editCategory == "Select Category" ? "tag.fill" : "checkmark.circle.fill")
+                                        Text(editCategory == "Select Category" ? "Category" : editCategory).lineLimit(1)
+                                    }
+                                    .font(.subheadline.bold())
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(showCategoryWarning ? Color.red.opacity(0.15) : Color.blue.opacity(0.1))
+                                    .foregroundStyle(showCategoryWarning ? Color.red : Color.blue)
+                                    .clipShape(Capsule())
+                                    .overlay(Capsule().stroke(showCategoryWarning ? Color.red : Color.clear, lineWidth: 1.5))
+                                }
+                            } else {
+                                Text("Contri").font(.subheadline.bold()).padding(.horizontal, 16).padding(.vertical, 14)
+                                    .background(Color.pink.opacity(0.1)).foregroundStyle(.pink).clipShape(Capsule())
+                            }
+                        }
+                        
+                        TextField("Description...", text: $editNote)
+                            .padding().background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 15))
+                    }.padding(.horizontal)
+                    
+                    if !tx.isCredit {
+                        Toggle("Split as Contri", isOn: $isContriMode)
+                            .padding(.horizontal).padding(.vertical, 8)
+                            .onChange(of: isContriMode) { _, isOn in
+                                if isOn {
+                                    editCategory = "Contri"
+                                    splits = [SplitPerson(amount: tx.amount / 2)]
+                                    showCategoryWarning = false
+                                } else {
+                                    editCategory = "Select Category"
+                                    splits = []
+                                }
+                            }
+                        
+                        if isContriMode {
+                            ScrollView {
+                                VStack(spacing: 10) {
+                                    ForEach($splits) { $split in
+                                        HStack {
+                                            TextField("Person Name", text: $split.name)
+                                                // UI FIX: Link the focus state here too
+                                                .focused($focusedSplitID, equals: split.id)
+                                                .onSubmit {
+                                                    let newSplit = SplitPerson(amount: 0)
+                                                    splits.append(newSplit)
+                                                    recalculateSplits(total: tx.amount)
+                                                    
+                                                    // UI FIX: Auto jump to new row
+                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                                        focusedSplitID = newSplit.id
+                                                    }
+                                                }
+                                                .submitLabel(.next)
+                                                .padding().background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 10))
+                                            
+                                            TextField("Amount", value: $split.amount, format: .number)
+                                                .keyboardType(.decimalPad)
+                                                .onChange(of: split.amount) { _, _ in
+                                                    split.isLocked = true
+                                                    recalculateSplits(total: tx.amount)
+                                                }
+                                                .padding().frame(width: 100).background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 10))
+                                        }
+                                    }
+                                }.padding(.horizontal)
+                            }.frame(maxHeight: 150)
+                        }
+                    }
+                    
+                    Button(action: {
+                        if !tx.isCredit && !isContriMode && editCategory == "Select Category" {
+                            withAnimation { showCategoryWarning = true }
+                            return
+                        }
+                        
+                        store.updateTransaction(id: tx.id, category: editCategory, note: editNote)
+                        
+                        if !tx.isCredit && isContriMode {
+                            let txNote = editNote.isEmpty ? "Split Expense" : editNote
+                            for split in splits {
+                                store.addFriendDebt(name: split.name, amount: split.amount, date: tx.date, note: txNote)
+                            }
+                        }
+                        editingTx = nil
+                    }) {
+                        Text("Save").fontWeight(.bold).frame(maxWidth: .infinity).padding()
+                            .background(Color.blue).foregroundStyle(.white).clipShape(RoundedRectangle(cornerRadius: 15))
+                    }.padding()
+                    Spacer()
+                }
+                // UI FIX: Increased minimum height from 250 to 300 so the title isn't cut off
+                .presentationDetents(isContriMode ? [.height(400), .medium] : [.height(300)])
+            }
+        }
+    }
+    
+    func recalculateSplits(total: Double) {
+        let lockedSum = splits.filter { $0.isLocked }.reduce(0) { $0 + $1.amount }
+        let unlockedCount = splits.filter { !$0.isLocked }.count
+        
+        if unlockedCount > 0 {
+            let remaining = max(total - lockedSum, 0)
+            let autoSplitAmount = remaining / Double(unlockedCount + 1)
+            for i in 0..<splits.count {
+                if !splits[i].isLocked { splits[i].amount = autoSplitAmount }
+            }
         }
     }
 }
@@ -131,7 +506,6 @@ struct DashboardView: View {
         }
     }
     
-    // BREAKING UP THE VIEW TO HELP THE COMPILER
     private var chartCardSection: some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack {
@@ -201,7 +575,6 @@ struct DashboardView: View {
         }
     }
 
-    // LOGIC
     var filteredTransactions: [Transaction] {
         let cutoffDate: Date
         switch timeRange {
@@ -261,9 +634,7 @@ struct CategoryDetailView: View {
         .navigationTitle("\(category) History")
     }
 }
-
 #Preview {
     ContentView()
         .environment(AppDataStore())
 }
-
