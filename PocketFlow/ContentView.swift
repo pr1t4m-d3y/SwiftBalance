@@ -738,86 +738,87 @@ struct HomeView: View {
     }
     
     var expandedDetailsMenu: some View {
-        VStack(spacing: 15) {
-            HStack {
-                if !isCredit {
-                    if !isContriMode {
-                        Menu {
-                            ForEach(categories, id: \.self) { cat in
-                                Button(cat) { category = cat; showCategoryWarning = false }
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: category == "Select Category" ? "tag.fill" : "checkmark.circle.fill")
-                                Text(category == "Select Category" ? "Category" : category).lineLimit(1)
-                            }
-                            .font(.subheadline.bold()).padding(.horizontal, 16).padding(.vertical, 14)
-                            .background(showCategoryWarning ? Color.red.opacity(0.15) : Color.blue.opacity(0.1))
-                            .foregroundStyle(showCategoryWarning ? Color.red : Color.blue).clipShape(Capsule())
-                            .overlay(Capsule().stroke(showCategoryWarning ? Color.red : Color.clear, lineWidth: 1.5))
-                        }
-                    } else {
-                        Text("Contri").font(.subheadline.bold()).padding(.horizontal, 16).padding(.vertical, 14)
-                            .background(Color.pink.opacity(0.1)).foregroundStyle(.pink).clipShape(Capsule())
-                    }
-                }
-                TextField("Description...", text: $note).padding().background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 15))
-            }.padding(.horizontal)
-            
-            if !isCredit {
-                Toggle("Split as Contri", isOn: $isContriMode)
-                    .padding(.horizontal).padding(.vertical, 8)
-                    .onChange(of: isContriMode) { _, isOn in
-                        if isOn {
-                            category = "Contri"
-                            splits = [SplitPerson(amount: (Double(inputAmount) ?? 0) / 2)]
-                            showCategoryWarning = false
-                        } else {
-                            category = "Select Category"; splits = []
-                        }
-                    }
-                
-                if isContriMode {
-                    // UI FIX 1: Taller ScrollView
-                    ScrollView {
-                        VStack(spacing: 15) {
-                            ForEach($splits) { $split in
-                                VStack(spacing: 8) {
-                                    HStack {
-                                        TextField("Person Name", text: $split.name)
-                                            .focused($focusedSplitID, equals: split.id)
-                                            // UI FIX 2: Listens for typing to trigger the math split
-                                            .onChange(of: split.name) { _, _ in recalculateSplits() }
-                                            .onSubmit { addNewSplitRow() }
-                                            .submitLabel(.next)
-                                            .padding().background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 10))
-                                        
-                                        TextField("Amount", value: $split.amount, format: .number)
-                                            .keyboardType(.decimalPad)
-                                            .focused($focusedAmountID, equals: split.id)
-                                            .onChange(of: split.amount) { _, _ in
-                                                if focusedAmountID == split.id {
-                                                    split.isLocked = true
-                                                    recalculateSplits()
-                                                }
-                                            }
-                                            .padding().frame(width: 100).background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 10))
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 15) {
+                    HStack {
+                        if !isCredit {
+                            if !isContriMode {
+                                Menu {
+                                    ForEach(categories, id: \.self) { cat in
+                                        Button(cat) { category = cat; showCategoryWarning = false }
                                     }
-                                    
-                                    if focusedSplitID == split.id && !split.name.isEmpty {
-                                        let matches = store.searchContacts(query: split.name)
-                                        if !matches.isEmpty {
-                                            ScrollView(.horizontal, showsIndicators: false) {
-                                                HStack {
-                                                    ForEach(matches, id: \.name) { contact in
-                                                        Button(action: {
-                                                            split.name = contact.name
-                                                            split.phoneNumber = contact.phone
-                                                            focusedSplitID = nil
-                                                            recalculateSplits()
-                                                        }) {
-                                                            Text(contact.name).font(.caption).bold().padding(.horizontal, 12).padding(.vertical, 6)
-                                                                .background(Color.blue.opacity(0.15)).foregroundStyle(.blue).clipShape(Capsule())
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: category == "Select Category" ? "tag.fill" : "checkmark.circle.fill")
+                                        Text(category == "Select Category" ? "Category" : category).lineLimit(1)
+                                    }
+                                    .font(.subheadline.bold()).padding(.horizontal, 16).padding(.vertical, 14)
+                                    .background(showCategoryWarning ? Color.red.opacity(0.15) : Color.blue.opacity(0.1))
+                                    .foregroundStyle(showCategoryWarning ? Color.red : Color.blue).clipShape(Capsule())
+                                    .overlay(Capsule().stroke(showCategoryWarning ? Color.red : Color.clear, lineWidth: 1.5))
+                                }
+                            } else {
+                                Text("Contri").font(.subheadline.bold()).padding(.horizontal, 16).padding(.vertical, 14)
+                                    .background(Color.pink.opacity(0.1)).foregroundStyle(.pink).clipShape(Capsule())
+                            }
+                        }
+                        TextField("Description...", text: $note).padding().background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 15))
+                    }
+                    
+                    if !isCredit {
+                        Toggle("Split as Contri", isOn: $isContriMode)
+                            .padding(.vertical, 8)
+                            .onChange(of: isContriMode) { _, isOn in
+                                if isOn {
+                                    category = "Contri"
+                                    splits = [SplitPerson(amount: 0)]
+                                    showCategoryWarning = false
+                                } else {
+                                    category = "Select Category"; splits = []
+                                }
+                            }
+                        
+                        if isContriMode {
+                            VStack(spacing: 15) {
+                                ForEach($splits) { $split in
+                                    VStack(spacing: 8) {
+                                        HStack {
+                                            TextField("Person Name", text: $split.name)
+                                                .focused($focusedSplitID, equals: split.id)
+                                                .onChange(of: split.name) { _, _ in recalculateSplits() }
+                                                .onSubmit { addNewSplitRow() }
+                                                .submitLabel(.next)
+                                                .padding().background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 10))
+                                            
+                                            TextField("Amount", value: $split.amount, format: .number)
+                                                .keyboardType(.decimalPad)
+                                                .focused($focusedAmountID, equals: split.id)
+                                                .onChange(of: split.amount) { _, _ in
+                                                    if focusedAmountID == split.id {
+                                                        split.isLocked = true
+                                                        recalculateSplits()
+                                                    }
+                                                }
+                                                .padding().frame(width: 100).background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 10))
+                                        }
+                                        
+                                        if focusedSplitID == split.id && !split.name.isEmpty {
+                                            let matches = store.searchContacts(query: split.name)
+                                            if !matches.isEmpty {
+                                                ScrollView(.horizontal, showsIndicators: false) {
+                                                    HStack {
+                                                        ForEach(matches, id: \.name) { contact in
+                                                            Button(action: {
+                                                                split.name = contact.name
+                                                                split.phoneNumber = contact.phone
+                                                                focusedSplitID = nil
+                                                                recalculateSplits()
+                                                                addNewSplitRow()
+                                                            }) {
+                                                                Text(contact.name).font(.caption).bold().padding(.horizontal, 12).padding(.vertical, 6)
+                                                                    .background(Color.blue.opacity(0.15)).foregroundStyle(.blue).clipShape(Capsule())
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -826,10 +827,16 @@ struct HomeView: View {
                                     }
                                 }
                             }
-                        }.padding(.horizontal)
-                    }.frame(maxHeight: 250)
+                        }
+                    }
                 }
+                .padding(.horizontal)
+                .padding(.top, 10)
+                .padding(.bottom, 20)
             }
+            .scrollIndicators(.hidden)
+            .frame(maxHeight: 260)
+            
             Spacer(minLength: 10)
             Button(action: finalizeAndReset) {
                 Text("Done").fontWeight(.bold).frame(maxWidth: .infinity).padding()
@@ -866,7 +873,6 @@ struct HomeView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focusedSplitID = newSplit.id }
     }
     
-    // UI FIX 2: Smart Math that ignores empty rows
     func recalculateSplits() {
         let total = Double(inputAmount) ?? 0
         let activeSplits = splits.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty || $0.isLocked }
@@ -881,7 +887,7 @@ struct HomeView: View {
                 if !splits[i].name.trimmingCharacters(in: .whitespaces).isEmpty {
                     splits[i].amount = autoSplitAmount
                 } else {
-                    splits[i].amount = 0 // Blank rows wait patiently at 0
+                    splits[i].amount = 0
                 }
             }
         }
@@ -899,18 +905,19 @@ struct HomeView: View {
                 store.cancelReminder(id: tx?.notificationID)
             }
             
-            // UI FIX 3: Strips out empty rows before saving
             let validSplits = splits.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
+            var finalNote = note
             
-            store.updateTransaction(id: id, category: category, note: note, splits: validSplits)
+            // Smart Note: Auto-generates the description for the history list
+            if !isCredit && isContriMode && note.isEmpty {
+                finalNote = "Split with \(validSplits.map(\.name).joined(separator: ", "))"
+            }
+            
+            store.updateTransaction(id: id, category: category, note: finalNote, splits: validSplits)
             
             if !isCredit && isContriMode {
-                // Auto-generates a note if you left it blank so history looks clean
-                let defaultNote = "Split with \(validSplits.map(\.name).joined(separator: ", "))"
-                let txNote = note.isEmpty ? defaultNote : note
-                
                 for split in validSplits {
-                    store.addFriendDebt(name: split.name, phoneNumber: split.phoneNumber, amount: split.amount, date: Date(), note: txNote)
+                    store.addFriendDebt(name: split.name, phoneNumber: split.phoneNumber, amount: split.amount, date: Date(), note: finalNote)
                 }
             }
         }
@@ -931,7 +938,7 @@ struct HomeView: View {
     }
 }
 
-// MARK: - 2. HISTORY VIEW (Replaces your current HistoryView)
+// MARK: - 2. HISTORY VIEW
 struct HistoryView: View {
     @Environment(AppDataStore.self) private var store
     @State private var editingTx: Transaction? = nil
@@ -941,6 +948,8 @@ struct HistoryView: View {
     @State private var showCategoryWarning: Bool = false
     @State private var isContriMode: Bool = false
     @State private var splits: [SplitPerson] = []
+    
+    @State private var isEstablishedContri: Bool = false
     
     @FocusState private var focusedSplitID: UUID?
     @FocusState private var focusedAmountID: UUID?
@@ -965,14 +974,6 @@ struct HistoryView: View {
                                 } else {
                                     Text("• \(tx.note)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                 }
-                                
-                                // FIX: Shows the names inline so you don't even have to tap it
-                                if tx.category == "Contri" && !tx.splits.isEmpty {
-                                    let names = tx.splits.filter { !$0.name.isEmpty }.map(\.name).joined(separator: ", ")
-                                    if !names.isEmpty {
-                                        Text("(\(names))").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                    }
-                                }
                             }
                         }
                         Spacer()
@@ -984,6 +985,18 @@ struct HistoryView: View {
                         editNote = tx.note
                         isContriMode = (tx.category == "Contri")
                         splits = tx.splits
+                        
+                        isEstablishedContri = (tx.category == "Contri" && !tx.splits.isEmpty)
+                        
+                        // PRO FIX: Guarantees there is ALWAYS an empty row so you can add new friends!
+                        if isContriMode {
+                            if splits.isEmpty {
+                                splits.append(SplitPerson(amount: 0))
+                            } else if let last = splits.last, !last.name.trimmingCharacters(in: .whitespaces).isEmpty {
+                                splits.append(SplitPerson(amount: 0))
+                            }
+                        }
+                        
                         showCategoryWarning = false
                         editingTx = tx
                     }
@@ -991,44 +1004,48 @@ struct HistoryView: View {
             }
             .navigationTitle("History").listStyle(.insetGrouped)
             .sheet(item: $editingTx) { tx in
-                VStack(spacing: 20) {
-                    Text(tx.isCredit ? "Edit Income" : "Edit Expense").font(.headline).padding(.top, 10)
-                    HStack {
-                        if !tx.isCredit {
-                            if !isContriMode {
-                                Menu {
-                                    ForEach(categories, id: \.self) { cat in
-                                        Button(cat) { editCategory = cat; showCategoryWarning = false }
-                                    }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: editCategory == "Select Category" ? "tag.fill" : "checkmark.circle.fill")
-                                        Text(editCategory == "Select Category" ? "Category" : editCategory).lineLimit(1)
-                                    }
-                                    .font(.subheadline.bold()).padding(.horizontal, 16).padding(.vertical, 14)
-                                    .background(showCategoryWarning ? Color.red.opacity(0.15) : Color.blue.opacity(0.1))
-                                    .foregroundStyle(showCategoryWarning ? Color.red : Color.blue).clipShape(Capsule())
-                                    .overlay(Capsule().stroke(showCategoryWarning ? Color.red : Color.clear, lineWidth: 1.5))
-                                }
-                            } else {
-                                Text("Contri").font(.subheadline.bold()).padding(.horizontal, 16).padding(.vertical, 14)
-                                    .background(Color.pink.opacity(0.1)).foregroundStyle(.pink).clipShape(Capsule())
-                            }
-                        }
-                        TextField("Description...", text: $editNote).padding().background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 15))
-                    }.padding(.horizontal)
+                VStack(spacing: 0) {
+                    Text(isEstablishedContri ? "Review Split" : (tx.isCredit ? "Edit Income" : "Edit Expense"))
+                        .font(.headline)
+                        .padding(.top, 25)
+                        .padding(.bottom, 15)
                     
-                    if !tx.isCredit {
-                        Toggle("Split as Contri", isOn: $isContriMode)
-                            .padding(.horizontal).padding(.vertical, 8)
-                            .onChange(of: isContriMode) { _, isOn in
-                                if isOn { editCategory = "Contri"; splits = [SplitPerson(amount: tx.amount / 2)]; showCategoryWarning = false }
-                                else { editCategory = "Select Category"; splits = [] }
+                    ScrollView {
+                        VStack(spacing: 15) {
+                            if !isEstablishedContri {
+                                HStack {
+                                    Menu {
+                                        ForEach(categories, id: \.self) { cat in
+                                            Button(cat) { editCategory = cat; showCategoryWarning = false }
+                                        }
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: editCategory == "Select Category" ? "tag.fill" : "checkmark.circle.fill")
+                                            Text(editCategory == "Select Category" ? "Category" : editCategory).lineLimit(1)
+                                        }
+                                        .font(.subheadline.bold()).padding(.horizontal, 16).padding(.vertical, 14)
+                                        .background(showCategoryWarning ? Color.red.opacity(0.15) : Color.blue.opacity(0.1))
+                                        .foregroundStyle(showCategoryWarning ? Color.red : Color.blue).clipShape(Capsule())
+                                        .overlay(Capsule().stroke(showCategoryWarning ? Color.red : Color.clear, lineWidth: 1.5))
+                                    }
+                                    TextField("Description...", text: $editNote).padding().background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 15))
+                                }
+                                
+                                if !tx.isCredit {
+                                    Toggle("Split as Contri", isOn: $isContriMode)
+                                        .padding(.vertical, 8)
+                                        .onChange(of: isContriMode) { _, isOn in
+                                            if isOn {
+                                                editCategory = "Contri"
+                                                if splits.isEmpty { splits = [SplitPerson(amount: 0)] }
+                                                showCategoryWarning = false
+                                            }
+                                            else { editCategory = "Select Category"; splits = [] }
+                                        }
+                                }
                             }
-                        
-                        if isContriMode {
-                            // FIX: Scroll view that naturally fills the available half-screen space
-                            ScrollView {
+                            
+                            if isContriMode {
                                 VStack(spacing: 15) {
                                     ForEach($splits) { $split in
                                         VStack(spacing: 8) {
@@ -1036,11 +1053,9 @@ struct HistoryView: View {
                                                 TextField("Person Name", text: $split.name)
                                                     .focused($focusedSplitID, equals: split.id)
                                                     .onChange(of: split.name) { _, _ in recalculateSplits(total: tx.amount) }
-                                                    .onSubmit {
-                                                        let newSplit = SplitPerson(amount: 0); splits.append(newSplit); recalculateSplits(total: tx.amount)
-                                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focusedSplitID = newSplit.id }
-                                                    }
-                                                    .submitLabel(.next).padding().background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 10))
+                                                    .onSubmit { addNewSplitRow(total: tx.amount) }
+                                                    .submitLabel(.next)
+                                                    .padding().background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 10))
                                                 
                                                 TextField("Amount", value: $split.amount, format: .number)
                                                     .keyboardType(.decimalPad)
@@ -1051,7 +1066,6 @@ struct HistoryView: View {
                                                     .padding().frame(width: 100).background(Color(.systemGray6)).clipShape(RoundedRectangle(cornerRadius: 10))
                                             }
                                             
-                                            // FIX: Brought Auto-Suggest to History
                                             if focusedSplitID == split.id && !split.name.isEmpty {
                                                 let matches = store.searchContacts(query: split.name)
                                                 if !matches.isEmpty {
@@ -1063,6 +1077,7 @@ struct HistoryView: View {
                                                                     split.phoneNumber = contact.phone
                                                                     focusedSplitID = nil
                                                                     recalculateSplits(total: tx.amount)
+                                                                    addNewSplitRow(total: tx.amount)
                                                                 }) {
                                                                     Text(contact.name).font(.caption).bold().padding(.horizontal, 12).padding(.vertical, 6)
                                                                         .background(Color.blue.opacity(0.15)).foregroundStyle(.blue).clipShape(Capsule())
@@ -1074,37 +1089,51 @@ struct HistoryView: View {
                                             }
                                         }
                                     }
-                                }.padding(.horizontal)
+                                }
                             }
                         }
+                        .padding(.horizontal)
+                        .padding(.bottom, 20)
                     }
+                    .scrollIndicators(.hidden)
+                    
                     Spacer(minLength: 10)
                     Button(action: {
                         if !tx.isCredit && !isContriMode && editCategory == "Select Category" { withAnimation { showCategoryWarning = true }; return }
                         
                         store.cancelReminder(id: tx.notificationID)
-                        
                         let validSplits = splits.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
                         let wasAlreadyContri = (tx.category == "Contri")
                         
-                        store.updateTransaction(id: tx.id, category: editCategory, note: editNote, splits: validSplits)
+                        // Smart Note logic for the History Tab
+                        var finalNote = editNote
+                        if !tx.isCredit && isContriMode && editNote.isEmpty {
+                            finalNote = "Split with \(validSplits.map(\.name).joined(separator: ", "))"
+                        }
                         
-                        // Prevents double-charging friends if you just open and close a history item
+                        store.updateTransaction(id: tx.id, category: editCategory, note: finalNote, splits: validSplits)
+                        
                         if !tx.isCredit && isContriMode && !wasAlreadyContri {
-                            let defaultNote = "Split with \(validSplits.map(\.name).joined(separator: ", "))"
-                            let txNote = editNote.isEmpty ? defaultNote : editNote
-                            for split in validSplits { store.addFriendDebt(name: split.name, phoneNumber: split.phoneNumber, amount: split.amount, date: tx.date, note: txNote) }
+                            for split in validSplits { store.addFriendDebt(name: split.name, phoneNumber: split.phoneNumber, amount: split.amount, date: tx.date, note: finalNote) }
                         }
                         editingTx = nil
                     }) {
                         Text("Save").fontWeight(.bold).frame(maxWidth: .infinity).padding()
                             .background(Color.blue).foregroundStyle(.white).clipShape(RoundedRectangle(cornerRadius: 15))
-                    }.padding()
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 20)
                 }
-                // FIX: Locks the sheet to exactly 50% of the screen (.medium) when in Contri Mode
-                .presentationDetents(isContriMode ? [.medium] : [.height(250)])
+                .presentationDetents(isEstablishedContri || isContriMode ? [.medium, .large] : [.height(280)])
             }
         }
+    }
+    
+    func addNewSplitRow(total: Double) {
+        let newSplit = SplitPerson(amount: 0)
+        splits.append(newSplit)
+        recalculateSplits(total: total)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focusedSplitID = newSplit.id }
     }
     
     func recalculateSplits(total: Double) {
@@ -1125,7 +1154,9 @@ struct HistoryView: View {
             }
         }
     }
-}// MARK: - 3. DASHBOARD VIEW & CATEGORY VIEW
+}
+
+// MARK: - 3. DASHBOARD VIEW & CATEGORY VIEW
 struct DashboardView: View {
     @Environment(AppDataStore.self) private var store
     @State private var timeRange = "7 Days"
@@ -1236,15 +1267,12 @@ struct DashboardView: View {
 
     var chartData: [(category: String, amount: Double, color: Color)] {
         var data: [(category: String, amount: Double, color: Color)] = []
-        
-        // UI FIX 4: Removes the duplicated "Contri" slice from the raw transactions
         let filteredForChart = filteredTransactions.filter { $0.category != "Contri" }
         let grouped = Dictionary(grouping: filteredForChart, by: { $0.category })
         
         for (key, txs) in grouped {
             data.append((category: key, amount: txs.reduce(0) { $0 + $1.amount }, color: txs.first?.color ?? .gray))
         }
-        // Appends the strictly correct "Total Owed To You" amount
         data.append((category: "Contri", amount: store.totalContriAmount, color: .pink))
         return data.sorted { $0.amount > $1.amount }
     }
